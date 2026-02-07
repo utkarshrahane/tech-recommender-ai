@@ -1,23 +1,24 @@
-from langchain_core.messages import HumanMessage
-from tools.file_tool import save_report_to_file
 from state import AgentState
+from tools.file_tool import save_report_to_file
+from langchain_core.messages import HumanMessage
 
 def summarizer_node(state: AgentState):
-    # 1. Combine all the work done so far
-    final_content = f"""
-# Tech Recommendation Report (2026)
+    # Rationale: Building a report from Pydantic objects is much cleaner 
+    # than parsing messy LLM strings.
     
-## Analyst Recommendations
-{state['messages'][-2].content}
-
-## Technical Benchmarks
-{state['messages'][-1].content}
-    """
+    report = f"# 📱 Expert {state['request'].category} Report\n\n"
+    report += f"**Budget:** {state['request'].budget} INR | **Focus:** {state['request'].priority}\n\n"
     
-    # 2. Use our new tool to save it
-    save_report_to_file(final_content)
+    report += "## 🏆 Top Recommendations\n"
+    for p in state["shortlist"]:
+        report += f"### {p.name}\n- **Price:** {p.price}\n- **Pros:** {', '.join(p.pros)}\n\n"
+        
+    report += "## 📊 Technical Benchmarks\n"
+    report += "| Product | Chipset | AnTuTu | Sensor | OIS |\n| :--- | :--- | :--- | :--- | :--- |\n"
+    for b in state["benchmarks"]:
+        report += f"| {b.product_name} | {b.chipset} | {b.antutu_score} | {b.camera_sensor} | {'✅' if b.ois_support else '❌'} |\n"
+        
+    # Save the file
+    save_report_to_file(report)
     
-    return {
-        "messages": [HumanMessage(content="Final report has been generated and saved to recommendation_report.md")],
-        "next_step": "end"
-    }
+    return {"final_report": report}

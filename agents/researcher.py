@@ -1,34 +1,39 @@
+from datetime import datetime
 from langchain_google_genai import ChatGoogleGenerativeAI
 from tools.search_tool import search_tool
 from langchain_core.messages import HumanMessage
-from state import AgentState
+from state import AgentState, ResearchOutput
 
+# Rationale: Using the 'preview' model for the best reasoning capabilities in 2026
 llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview")
+structured_researcher = llm.with_structured_output(ResearchOutput)
 
 def researcher_node(state: AgentState):
-    query = state['messages'][0].content 
+    # 1. Get current date to ground the search (Prevents Hallucinations)
+    current_time = datetime.now().strftime("%B %Y")
+    req = state["request"]
     
-    # Rationale: We ask the tool to get the content of the top articles
-    search_data = search_tool.invoke({"query": query})
+    # 2. Construct a search query focused on the 'now' of 2026
+    query = f"Latest {req.category}s released in India near {current_time}. Budget: {req.budget} INR. Focus: {req.priority}."
     
-    # We create a prompt to help the Researcher 'read' the text
-    # instead of just passing raw JSON.
-    reading_prompt = f"""
-    You are an expert researcher. I have provided raw search results from tech blogs.
-    User Request: {query}
-    Raw Data: {search_data}
-
-    Task:
-    1. Read through the provided search results and content.
-    2. Identify the top 4 smartphones that are consistently rated highly in these articles.
-    3. For each phone, extract specific details: Price, Key Camera Specs, and why the reviewer liked it.
+    # 3. Perform the live search
+    search_results = search_tool.invoke({"query": query})
     
-    Return this as a structured summary for the Analyst.
+    prompt = f"""
+    You are an expert tech researcher in {current_time}. 
+    Based on these LIVE search results, identify the best {req.category}s: {search_results}
+    
+    CRITICAL RULES:
+    - Only pick phones that are current/released in late 2025 or early 2026.
+    - IGNORE older 2024 models (like Nothing 2a or Nord 3).
+    - Look for models like 'Nothing Phone (3a) Pro', 'Motorola Edge 60 Pro', and 'Vivo T4 Pro'.
+    - Ensure the price is strictly under {req.budget} INR.
     """
     
-    response = llm.invoke(reading_prompt)
+    # --- FIX: We now explicitly assign the result to 'response' ---
+    response = structured_researcher.invoke(prompt)
     
     return {
-        "messages": [HumanMessage(content=response.content)],
-        "next_step": "analyst" 
+        "shortlist": response.products,
+        "messages": [HumanMessage(content=f"Researcher found {len(response.products)} current models for {current_time}.")]
     }
